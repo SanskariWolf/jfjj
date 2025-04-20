@@ -1,232 +1,322 @@
-Okay, I've reviewed the provided code, which implements ILF (Imitation Learning-based Fuzzer) for Ethereum smart contracts. Here's a breakdown of the structure, functionality, and key components, along with explanations of how they interact.
+Okay, here's a short and quick project idea focusing on the core web and database concepts you've learned: **A Simple Contact Book Web App**.
 
-**High-Level Overview**
+This covers:
 
-ILF is a fuzzer designed to test Ethereum smart contracts for vulnerabilities.  It combines symbolic execution (a precise but often slow method) with imitation learning (using neural networks to mimic the behavior of the symbolic execution).  The goal is to get the benefits of both: the accuracy of symbolic execution and the speed/scalability of a learned fuzzing policy.
+*   **OOP:** A `Contact` JavaBean.
+*   **JSP:** Pages for adding and viewing contacts.
+*   **Servlet:** Handles adding contacts and retrieving them for display.
+*   **JDBC:** Connects to MySQL to save and load contacts.
+*   **MySQL:** The database to store the contacts.
 
-Here's the core workflow:
+**Project: Simple Contact Book**
 
-1.  **Setup:**
-    *   The fuzzer can be set up using Docker (recommended) or locally.
-    *   It requires a Truffle project (a standard way of organizing Ethereum smart contract code, tests, and deployment scripts).
+**Features:**
 
-2.  **Contract Extraction:**
-    *   The `extract.py` script uses `ganache-cli` (a local blockchain simulator) to deploy the contracts within the Truffle project.
-    *   It records the deployment transactions, which are essential for initializing the fuzzer's internal state.
+1.  Add a new contact (Name, Email, Phone).
+2.  View all saved contacts.
 
-3.  **Fuzzing Modes:**
-    *   **Random:** Generates transactions with uniformly random inputs (a baseline).
-    *   **Symbolic:** Uses symbolic execution to explore contract states, creating a precise but potentially slow exploration. This is used for generating training data.
-    *   **Symbolic+ (sym_plus):** Similar to symbolic, but allows revisiting previously explored states.
-    *   **Imitation:** Uses a pre-trained neural network model to generate transactions, imitating the patterns learned from symbolic execution. This is the main fuzzing mode.
-    *   **Mix:** Randomly chooses between `imitation` and `symbolic` for each transaction.
+**Files Needed:**
 
-4.  **Fuzzing Loop:**
-    *   The fuzzer repeatedly generates transactions and executes them against a simulated Ethereum Virtual Machine (EVM) implemented in Go (`execution.go` and related files).
-    *   After each transaction, it checks for vulnerabilities using a set of predefined checkers.
-    *   It also tracks code coverage (which parts of the contract code have been executed).
+1.  `Contact.java` (JavaBean)
+2.  `ContactDao.java` (Data Access Object using JDBC)
+3.  `ContactServlet.java` (Servlet Controller)
+4.  `addContact.jsp` (Input Form View)
+5.  `viewContacts.jsp` (Display List View)
+6.  `web.xml` (Servlet Mapping)
+7.  MySQL Database Setup
 
-5.  **Training (Imitation Learning):**
-    *   The `symbolic` fuzzer is used to generate a dataset of high-quality transaction sequences.
-    *   Scripts (`get_int_values.py`, `get_amounts.py`) extract common integer and amount values from the training data.
-    *   The `imitation` fuzzer, when run with the `--train_dir` argument, trains neural networks on this dataset.
-    *   The trained model is saved to a directory (`model` by default, or specified with `--model`).
+---
 
-6.  **Vulnerability Reporting:**
-    *   The fuzzer outputs a vulnerability report, indicating which types of vulnerabilities (if any) were detected.
+**Code Snippets (Illustrative - you'll need to fill them out):**
 
-**Detailed Component Breakdown**
+**1. `Contact.java` (JavaBean)**
 
-Let's break down the code by directory and file:
+```java
+package com.example.contactbook.bean;
 
-**1. Root Directory**
+import java.io.Serializable;
 
-*   **`README.md`:**  Provides an overview, setup instructions, usage examples, citation information, and licensing details.  This is the main documentation.
-*   **`requirements.txt`:** Lists Python dependencies. Key ones include:
-    *   `pycryptodome`, `pysha3`:  Cryptography libraries.
-    *   `graphviz`: For generating visualizations of control flow graphs (CFGs).
-    *   `numpy`, `scikit-learn`, `torch`:  Machine learning libraries for the imitation learning component.
-    *   `web3`:  Ethereum interaction library.
-    * `py-ecc`, `coincurve`, `rlp`: Used for manipulating inputs, outputs, and blockchain data.
-*   **`Dockerfile`:**  Defines the Docker environment for easy setup and consistent execution.  It installs all necessary tools (Node.js, Truffle, Ganache, solc, Go, Z3) and dependencies.
-*   **`example/`:**  Contains an example Truffle project (`crowdsale`) that can be used to test ILF.
-    *   `contracts/`:  Contains the Solidity source code (`crowdsale.sol`, `Migrations.sol`).
-    *   `build/contracts/`:  Contains compiled contract artifacts (ABI, bytecode, etc.) in JSON format. These are generated by Truffle.
-    *   `migrations/`: Contains Truffle migration scripts.
-    *   `transaction.json`: Contains deployment transations.
-    *   `truffle-config.js`: Configures Truffle for the development network.
-* **`execution/`**: This contains the Go code responsible for the symbolic execution engine. It is built as a shared library (`execution.so`).
-    * **`account.go`**: Defines `Account` and `AccountManager` structures for managing accounts, their private keys, addresses, and balances.  It initializes a set of predefined accounts.
-    * **`backend.go`**: This is the core of the execution engine. It implements a simplified Ethereum backend:
-      *   `NewBackend()`:  Creates and initializes the backend, including setting up a blockchain (using `go-ethereum/core`), a state database, and the chain configuration.
-      *   `DeployContracts()`:  Reads contract deployment transactions and updates the internal state.
-      *   `CommitTransaction()`:  Applies a transaction to the EVM, using a `StructLogger` to capture execution details.  This is where the actual symbolic execution happens.
-      *   `CommitTx()`: Wrapper for `CommitTransaction()`.
-      *   `SetBalance()`: A utility function to set account balances.
-    *   **`contract.go`**:  Defines `Contract` and `ContractManager` to represent deployed contracts and manage them.  It handles parsing contract ABIs and bytecode. `NewContract` creates instruction list.
-    *   **`process.go`**: Defines `ProcessOptions` to specify how to process transaction logs. It processes logs to extract information like deployed contracts.
-    *   **`transaction.go`**:  Defines `MyTransaction` and functions for reading transactions from JSON files (`ReadTransactions`). It also includes functions to convert transaction data to the format expected by the Go Ethereum library.
-*   **`export/`:**  Contains Go code that exposes the core execution engine functionality as a C-shared library (`execution.so`).  This allows Python to interact with the Go code.
-    *   **`execution.go`:**  Defines C-exported functions (e.g., `SetBackend`, `GetContracts`, `CommitTx`, `JumpState`) that act as a bridge between Python and the Go execution engine.
-*   **`script/`:** Contains helper Python scripts.
-    *   **`extract.js`**:  A JavaScript script (used by Truffle) to extract deployment transactions.
-    *   **`extract.py`**:  A Python script that uses `ganache-cli` and Truffle to deploy contracts and extract deployment transactions.
-    *   **`get_amounts.py`:** Extracts common amount values from a training data directory.
-    *   **`get_int_values.py`:** Extracts common integer values from a training data directory.
-    *   **`patch.geth`**: A patch file that modifies the `go-ethereum` library. The main changes are to the consensus algorithm( to make running fuzzing easy), disable proof-of-work, and provide a `ExpNewCanonical` function.
-*   **`model/`:** Contains pre-trained neural network models (PyTorch `.pt` files and a scikit-learn scaler `.pkl`).
-*   **`ilf/`:** Contains the main Python code for the fuzzer.
-    *   **`__main__.py`:**  The main entry point.  Handles argument parsing, initialization, and the main fuzzing loop.
-    *   **`common/`:**
-        *   **`__init__.py`:** imports `utils` to use it in `__main__.py`.
-        *   **`utils.py`:**  Contains utility functions, primarily for setting up logging.
-    *   **`ethereum/`:**  Contains code related to Ethereum concepts and Solidity.
-        *   **`analysis/`:**
-            *   **`__init__.py`:** imports CFG
-            *   **`cfg.py`:**  Defines the `CFG` (Control Flow Graph) class, which is used to analyze the control flow of a contract's bytecode.  It constructs the CFG from the disassembled bytecode and provides methods for working with it (e.g., `to_graphviz`).
-        *   **`evm/`:**
-            *   **`__init__.py`:** imports instruction, state, contract, and opcode modules
-            *   **`insn.py`:**  Defines the `Instruction` class, representing a single EVM instruction.
-            *   **`state.py`:** Defines the `EVMState` class, representing the state of the EVM (stack, memory, storage). It includes helper classes like `Top`, `Value`, and `StackChecker`.
-            *   **`contract.py`:**  Defines the `ContractManager` and `Contract` classes for representing Solidity contracts. It handles parsing ABIs, bytecode, and source maps.
-            *   **`opcode.py`:**  Defines constants for EVM opcodes (e.g., `ADD`, `MUL`, `SHA3`) and their properties (e.g., stack changes).
-            *   **`utils.py`:** utility functions for working with EVM data
-        *   **`solidity/`:**
-            *   **`__init__.py`:** imports abi and account modules.
-            *   **`abi.py`:**  Defines classes for representing Solidity types (`SolType`), arguments (`Argument`), methods (`Method`), and ABIs (`ABI`).
-            *   **`account.py`:**  Defines the `AccountManager` class (similar to the Go version).
-    *   **`fuzzers/`:** Contains the core fuzzing logic.
-        *   **`__init__.py`:**  imports `Environment`.
-        *   **`environment.py`:** Defines the `Environment` class, which manages the main fuzzing loop and interacts with the execution engine and policy.
-        *   **`obs_base.py`:** Defines the abstract class `ObsBase` for getting updated state.
-        *   **`policy_base.py`:** Defines the abstract class `PolicyBase` for generating transactions.
-        *   **`checkers/`:**  Contains vulnerability checkers.
-            *   **`__init__.py`:** imports all vulnerability checkers.
-            *   **`checker.py`:** Defines the abstract base class `Checker`.
-            *   **`block_state_dep.py`:**  Checks for vulnerabilities related to block state dependencies.
-            *   **`dangerous_delegatecall.py`:** Checks for unsafe uses of `DELEGATECALL`.
-            *   **`leaking.py`:** Checks for ether leaking vulnerabilities.
-            *   **`locking.py`:** Checks for locked ether.
-            *   **`reentrancy.py`:**  Checks for reentrancy vulnerabilities.
-            *   **`suicidal.py`:**  Checks if the contract can be self-destructed by an attacker.
-            *   **`unhandled_exception.py`:**  Checks for unhandled exceptions.
-        *   **`imitation/`:** Contains code for the imitation learning policy.
-            *   **`__init__.py`:** imports ObsImitation and PolicyImitation modules.
-            *   **`addr_map.py`:**  A mapping from account addresses to integer indices.
-            *   **`amounts.py`:**  A list of common ether amount values.
-            *   **`constants.py`:** Hyperparameters for the neural networks.
-            *   **`dataset.py`:**  Defines classes for representing training data (inputs, outputs, samples, datasets).
-            *   **`int_values.py`:**  A list of common integer values.
-            *   **`layers.py`:**  Defines custom PyTorch layers, like `GraphConvolution` for graph convolutional networks (GCNs).
-            *   **`models.py`:** Defines the neural network architectures:
-                *   `ArgsNet`: RNN for argument prediction.
-                *   `ParamsNet`: Predicts sender and amount.
-                *   `EmbedGCN`: Graph Convolutional Network for contract embedding.
-                *   `PolicyNet`: The main policy network, combines information from other networks.
-            *   **`nlp.py`:**  Contains natural language processing (NLP) utilities, primarily for embedding method names using word2vec.
-            *   **`obs_imitation.py`:**  Inherits `ObsBase`.
-            *   **`policy_imitation.py`:**  Implements the imitation learning policy.  This includes methods for training, loading models, selecting actions, and handling state updates.
-        *   **`mix/`:**  Combines the symbolic and imitation policies.
-            *  **`__init__.py`:** imports ObsMix and PolicyMix.
-            *   **`obs_mix.py`:**  Combines symbolic and imitation observation strategies.
-            *   **`policy_mix.py`:**  Combines symbolic and imitation policies, choosing randomly between them.
-        *   **`random/`:** Implements a random fuzzing policy.
-            *   **`__init__.py`:** imports PolicyRandom and ObsRandom.
-            *   **`obs_random.py`:** Inherits `ObsBase`.
-            *   **`policy_random.py`:**  Generates transactions with random inputs.
-        *  **`sym_plus/`:**
-            *  **`__init__.py`:** imports ObsSymPlus and PolicySymPlus
-            *   **`obs_sym_plus.py`:**  Extends the symbolic observer to support symbolic execution.
-            *   **`policy_sym_plus.py`:**  Extends the symbolic policy, using symbolic execution to find and explore new states.
-        *   **`symbolic/`:**  Contains the core symbolic execution engine.
-            *    **`__init__.py`:**
-            *   **`obs_symbolic.py`:**  The symbolic observation strategy.
-            *   **`policy_symbolic.py`:**  The symbolic execution policy.
-            *    **`exceptions.py`:** Custom exception classes
-            *   **`solidity.py`:**  Defines solidity related data structures.
-            *    **`utils.py`:** Various utility functions used throughout the symbolic execution engine.
-            *   **`account.py`**: Define Account and account types.
-            *   **`constraints.py`**: Defines constants for symbolic variable.
-            *   **`environment.py`**:  Contains environment variables.
-            *   **`execution.py`**: Defines the execution engine for symbolic execution.
-            *    **`global_state.py`:**  Defines the global state of the symbolic execution, combining world state and environment.
-            *   **`keccak.py`**:  Manages Keccak hashing (not fully implemented).
-            *   **`machine_state.py`:** Defines machine state of symbolic execution, including pc, stack, memory, etc.
-            *   **`storage.py`**: Defines symbolic storage, including `EmptyStorage` and `AbstractStorage`.
-            *   **`svm.py`**: Defines the core of symbolic execution engine.
-            *   **`svm_utils.py`**: Defines the utility functions used in symbolic execution engine.
-*   **`record.py`**:  Defines classes for recording and managing execution statistics.
-*   **`stat.py`**:  Defines the `Stat` class, which tracks various statistics like code coverage and vulnerability detection.
-*  **`tx.py`**:  Defines the `Tx` class, representing a transaction, and related utility functions.
+public class Contact implements Serializable {
+    private int id;
+    private String name;
+    private String email;
+    private String phone;
 
-**Key Classes and Their Roles**
+    // Default Constructor
+    public Contact() {}
 
-*   **`Environment` (in `ilf.fuzzers.environment`):**  The main driver of the fuzzing process.  It coordinates the policy, observation strategy, and execution engine.
-*   **`PolicyBase` (in `ilf.fuzzers.policy_base`):**  An abstract base class for different fuzzing policies.  Subclasses implement different strategies for selecting transactions (e.g., random, imitation learning, symbolic).
-*   **`PolicyImitation` (in `ilf.fuzzers.imitation.policy_imitation`):**  The imitation learning policy.  It uses neural networks to predict transaction parameters.
-*   **`ObsBase` (in `ilf.fuzzers.obs_base`):** An abstract base class that defines observation strategies.  It's responsible for updating internal state based on the results of transaction execution.
-*   **`Backend` (in `execution/backend.go`):**  The core execution engine (written in Go).  It manages the blockchain state, EVM, and contract deployment.
-*   **`ContractManager` (in `ilf.ethereum.evm.contract` and `execution/contract.go`):**  Manages information about deployed contracts, including their ABIs, bytecode, and addresses.
-*   **`AccountManager` (in `ilf.ethereum.solidity.account` and `execution/account.go`):** Manages accounts, including addresses and balances.
-*   **`EVMState` (in `ilf.ethereum.evm.state`):**  Represents the state of the Ethereum Virtual Machine during symbolic execution.  This includes the stack, memory, and storage.
-*   **`CFG` (in `ilf.ethereum.analysis.cfg`):** Represents the Control Flow Graph of a contract, used for static analysis and coverage tracking.
-*   **`Stat` (in `ilf.fuzzers.stat`):**  Tracks statistics about the fuzzing process, such as code coverage and vulnerability detection.
-*   **`Checker` (in `ilf.fuzzers.checkers.checker`):** An abstract base class for vulnerability checkers. Subclasses implement specific vulnerability detection logic.
-* **`Tx` (in ilf/execution/tx.py and ilf/execution/backend.go)** Represents a transaction with sender, recipient, function name, arguments, value, and other transaction parameters.
-* **`SVM` (in `ilf/symbolic/symbolic/svm.py`):** Symbolic execution engine.
+    // Getters and Setters for id, name, email, phone
+    // ... (generate these using your IDE)
+}
+```
 
-**Workflow of the Imitation Learning Policy (`PolicyImitation`)**
+**2. `ContactDao.java` (JDBC DAO)**
 
-1.  **Feature Extraction:**  For each possible method call, features are extracted:
-    *   **Method Features:**  A combination of bag-of-words (BOW) features representing the opcodes in the method, features related to past transactions of this type, storage access, etc.
-    *   **Word Embeddings:**  The method name is tokenized and embedded using a pre-trained word2vec model.
-    * **Graph Embedding**: The contract is represented as a graph, using the control flow graph of its methods, and features are embedded by GCN module.
-    * **RNN state**: The previous state of the Recurrent Neural Network, which is computed by `rnn` in `PolicyNet`.
-2.  **Neural Network Prediction:**
-    *   **`PolicyNet`:**  Takes the method features and graph features, outputs a score for each possible method.
-    *   **`ParamsNet`:**  Predicts the sender address and the amount of Ether to send.
-    *   **`ArgsNet` (RNN):**  Predicts the arguments to the function, one at a time. It takes its own previous hidden state as input, modeling the dependencies between arguments.
-3.  **Action Selection:**
-    *   The method with the highest score (or a randomly sampled method based on the scores) is selected.
-    *   The sender and amount are selected based on the `ParamsNet` output (either taking the highest-scoring options or sampling).
-    *   Arguments are generated by `ArgsNet`, one at a time.
-4.  **Transaction Execution:**
-    *   The selected transaction is executed using the Go-based execution engine.
-5.  **State Update:**
-    *   The observation strategy (`ObsImitation`) updates the internal state (e.g., code coverage, statistics).
-    *   The `PolicyImitation` instance updates its hidden state for the RNN.
+```java
+package com.example.contactbook.dao;
 
-**Workflow of the Symbolic Execution Policy (`PolicySymbolic`)**
+import com.example.contactbook.bean.Contact;
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 
-1. **Build symbolic states**: The `svm` class builds the symbolic states. It initializes with `root_wstate` and runs the initial transactions.
-2. **Symoblic calls**: The `sym_call_address` is used to build next-generation world states by symbolically executing one method of the contract. It explores possible paths in the contract execution.
-3. **State Merging**: The `svm` tries to merge symbol states.
-4. **Select Transaction**:
-   * Select a symbolic state from the `svm` to build a transaction.
-   * Use `get_state_solver` to create a z3 solver and check state satisfiability.
-   * If state is satisfiable, use the model from z3 to build a concrete input (sender, amount, arguments).
-5. **Transaction Execution**: The concrete transaction is passed to the execution engine to run.
+public class ContactDao {
+    // --- IMPORTANT: Replace with your actual DB details ---
+    private String jdbcURL = "jdbc:mysql://localhost:3306/contact_db"; // Your DB name
+    private String jdbcUsername = "root"; // Your DB username
+    private String jdbcPassword = "your_password"; // Your DB password
+    private String jdbcDriver = "com.mysql.cj.jdbc.Driver";
+    // --- ---
 
-**Key Improvements and Strengths**
+    private Connection getConnection() throws SQLException, ClassNotFoundException {
+        Class.forName(jdbcDriver);
+        return DriverManager.getConnection(jdbcURL, jdbcUsername, jdbcPassword);
+    }
 
-*   **Imitation Learning:**  The core strength is using imitation learning to guide the fuzzer. This allows it to learn from the precise (but potentially slow) symbolic execution and generate transactions that are more likely to explore interesting parts of the contract.
-*   **Symbolic Execution:**  The symbolic execution component allows for precise reasoning about contract states, enabling the detection of subtle vulnerabilities.  It's used both for training data generation and for targeted exploration.
-*   **Go-based EVM:** The use of a Go-based EVM implementation (leveraging `go-ethereum`) provides good performance and compatibility.
-*   **Dockerized Environment:**  The Docker setup simplifies installation and ensures consistent results across different environments.
-*   **Truffle Integration:**  The use of Truffle projects makes it easy to integrate ILF with existing Ethereum development workflows.
-* **Comprehensive Checkers:** The vulnerability checks for leaking, locking, reentrancy, suicidal, etc.
+    public boolean addContact(Contact contact) {
+        String sql = "INSERT INTO contacts (name, email, phone) VALUES (?, ?, ?)";
+        boolean rowInserted = false;
+        try (Connection conn = getConnection();
+             PreparedStatement statement = conn.prepareStatement(sql)) {
 
-**Potential Areas for Improvement (Based on the Code, Without Running)**
+            statement.setString(1, contact.getName());
+            statement.setString(2, contact.getEmail());
+            statement.setString(3, contact.getPhone());
+            rowInserted = statement.executeUpdate() > 0;
 
-*   **Scalability of Symbolic Execution:**  Symbolic execution can become very slow for complex contracts with many possible execution paths.  The code includes some attempts to mitigate this (e.g., limiting the depth of exploration), but further optimizations might be needed.
-*   **State Merging:**  The current code does not implement explicit state merging.  State merging is a crucial technique in symbolic execution to reduce the number of states that need to be explored.
-*   **Constraint Solver Timeouts:**  The symbolic execution relies heavily on the Z3 SMT solver.  Timeouts are a common issue.  More sophisticated timeout handling and constraint simplification could improve robustness.
-*   **Support for More Solidity Features:**  The fuzzer may not fully support all Solidity features.  Expanding support (e.g., for more complex data types, libraries) would increase its effectiveness.
-* **`CALLDATACOPY` and `RETURNDATACOPY` handling**: This code is incomplete in `symbolic/execution.go`
-*   **Word Embeddings:**  The word2vec model (`ilf_w2v.pkl`) is hardcoded. It would be better to make this configurable or load it from a standard location.
-*   **Documentation:** While the `README.md` is good, adding more detailed comments within the code would improve maintainability and understanding.
-* **Testing:** More unit tests would help to reduce errors.
-*   **Error Handling:**  More robust error handling (e.g., catching and logging exceptions in more places) would improve the fuzzer's stability.  Currently, many errors cause a panic.
-*  **Symbolic Memory:** Currently symbolic memory access has not been implemented.
+        } catch (SQLException | ClassNotFoundException e) {
+            e.printStackTrace(); // Handle appropriately
+        }
+        return rowInserted;
+    }
 
-This is a comprehensive overview and breakdown of the ILF codebase. It's a sophisticated fuzzer that combines multiple advanced techniques.  The combination of symbolic execution and imitation learning is a promising approach for improving the effectiveness of smart contract fuzzing. Let me know if any part requires more clarification!
+    public List<Contact> getAllContacts() {
+        List<Contact> contacts = new ArrayList<>();
+        String sql = "SELECT * FROM contacts ORDER BY name";
+        try (Connection conn = getConnection();
+             Statement statement = conn.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
+
+            while (resultSet.next()) {
+                Contact contact = new Contact();
+                contact.setId(resultSet.getInt("id"));
+                contact.setName(resultSet.getString("name"));
+                contact.setEmail(resultSet.getString("email"));
+                contact.setPhone(resultSet.getString("phone"));
+                contacts.add(contact);
+            }
+        } catch (SQLException | ClassNotFoundException e) {
+            e.printStackTrace(); // Handle appropriately
+        }
+        return contacts;
+    }
+}
+```
+
+**3. `ContactServlet.java` (Servlet)**
+
+```java
+package com.example.contactbook.servlet;
+
+import com.example.contactbook.bean.Contact;
+import com.example.contactbook.dao.ContactDao;
+
+import javax.servlet.*;
+import javax.servlet.http.*;
+import javax.servlet.annotation.WebServlet; // Or use web.xml mapping
+import java.io.IOException;
+import java.util.List;
+
+@WebServlet("/contacts") // Map this servlet to the URL /contacts
+public class ContactServlet extends HttpServlet {
+    private ContactDao contactDao;
+
+    public void init() {
+        contactDao = new ContactDao();
+    }
+
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        // Handle adding a new contact
+        String name = request.getParameter("name");
+        String email = request.getParameter("email");
+        String phone = request.getParameter("phone");
+
+        Contact newContact = new Contact();
+        newContact.setName(name);
+        newContact.setEmail(email);
+        newContact.setPhone(phone);
+
+        contactDao.addContact(newContact);
+        response.sendRedirect("contacts"); // Redirect to the GET handler to view all
+    }
+
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        // Handle displaying contacts
+        List<Contact> contactList = contactDao.getAllContacts();
+        request.setAttribute("contactList", contactList); // Store list in request scope
+        RequestDispatcher dispatcher = request.getRequestDispatcher("viewContacts.jsp");
+        dispatcher.forward(request, response); // Forward to the JSP
+    }
+}
+```
+
+**4. `addContact.jsp` (Input Form)**
+
+```jsp
+<%@ page contentType="text/html;charset=UTF-8" language="java" %>
+<html>
+<head>
+    <title>Add Contact</title>
+</head>
+<body>
+    <h2>Add New Contact</h2>
+    <form action="contacts" method="post"> <%-- POST to ContactServlet --%>
+        Name: <input type="text" name="name" required><br><br>
+        Email: <input type="email" name="email" required><br><br>
+        Phone: <input type="text" name="phone" required><br><br>
+        <input type="submit" value="Add Contact">
+    </form>
+    <br>
+    <a href="contacts">View All Contacts</a> <%-- Link to GET handler --%>
+</body>
+</html>
+```
+
+**5. `viewContacts.jsp` (Display List)**
+
+```jsp
+<%@ page contentType="text/html;charset=UTF-8" language="java" %>
+<%@ page import="java.util.List" %>
+<%@ page import="com.example.contactbook.bean.Contact" %>
+<html>
+<head>
+    <title>Contact List</title>
+    <style> table, th, td { border: 1px solid black; border-collapse: collapse; padding: 5px;} </style>
+</head>
+<body>
+    <h2>Contact List</h2>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+        </tr>
+        <%
+            List<Contact> contactList = (List<Contact>) request.getAttribute("contactList");
+            if (contactList != null && !contactList.isEmpty()) {
+                for (Contact contact : contactList) {
+        %>
+            <tr>
+                <td><%= contact.getName() %></td>
+                <td><%= contact.getEmail() %></td>
+                <td><%= contact.getPhone() %></td>
+            </tr>
+        <%
+                }
+            } else {
+        %>
+            <tr>
+                <td colspan="3">No contacts found.</td>
+            </tr>
+        <%
+            }
+        %>
+    </table>
+    <br>
+    <a href="addContact.jsp">Add New Contact</a>
+</body>
+</html>
+```
+
+**6. `web.xml` (Deployment Descriptor - if not using `@WebServlet`)**
+
+Place this inside `src/main/webapp/WEB-INF/`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
+         version="4.0">
+
+    <servlet>
+        <servlet-name>ContactServlet</servlet-name>
+        <servlet-class>com.example.contactbook.servlet.ContactServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>ContactServlet</servlet-name>
+        <url-pattern>/contacts</url-pattern> <%-- Map URLs ending in /contacts to this servlet --%>
+    </servlet-mapping>
+
+    <welcome-file-list>
+        <welcome-file>addContact.jsp</welcome-file> <%-- Start page --%>
+    </welcome-file-list>
+</web-app>
+```
+
+*(Note: If you use `@WebServlet("/contacts")` in `ContactServlet.java`, you might not need the `<servlet>` and `<servlet-mapping>` parts in `web.xml`, but the `welcome-file-list` is still useful).*
+
+**7. MySQL Database Setup**
+
+Execute this SQL in your MySQL client (like MySQL Workbench, phpMyAdmin, or command line):
+
+```sql
+-- Create the database (if it doesn't exist)
+CREATE DATABASE IF NOT EXISTS contact_db;
+
+-- Use the database
+USE contact_db;
+
+-- Create the contacts table
+CREATE TABLE IF NOT EXISTS contacts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    phone VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+---
+
+**How to Run:**
+
+1.  **Prerequisites:**
+    *   Java Development Kit (JDK) installed.
+    *   An IDE like Eclipse (for Web Developers), IntelliJ IDEA Ultimate, or VS Code with Java extensions.
+    *   Apache Tomcat server installed and configured in your IDE.
+    *   MySQL Server running.
+    *   MySQL JDBC Driver JAR file downloaded. ([Download Link](https://dev.mysql.com/downloads/connector/j/))
+
+2.  **Database:** Run the SQL script above to create the `contact_db` database and `contacts` table. **Remember** to update the `jdbcURL`, `jdbcUsername`, and `jdbcPassword` in `ContactDao.java` with your actual MySQL details.
+
+3.  **Create Project:**
+    *   In your IDE, create a new "Dynamic Web Project" (Eclipse) or equivalent Java EE/Web Application project.
+    *   Name it something like `SimpleContactBook`.
+
+4.  **Add Code:**
+    *   Create the package structure (`com.example.contactbook.bean`, `.dao`, `.servlet`).
+    *   Copy/paste the Java code into the respective files (`Contact.java`, `ContactDao.java`, `ContactServlet.java`).
+    *   Place `addContact.jsp` and `viewContacts.jsp` directly under the `webapp` (or `WebContent`) folder.
+    *   Place `web.xml` inside the `webapp/WEB-INF` folder.
+
+5.  **Add JDBC Driver:**
+    *   Copy the downloaded MySQL JDBC Driver JAR file (e.g., `mysql-connector-j-8.x.x.jar`) into the `src/main/webapp/WEB-INF/lib` folder of your project. (If the `lib` folder doesn't exist, create it).
+
+6.  **Configure Server:**
+    *   In your IDE, add your Apache Tomcat server if you haven't already.
+
+7.  **Deploy and Run:**
+    *   Right-click on your project in the IDE.
+    *   Select "Run As" -> "Run on Server".
+    *   Choose your configured Tomcat server.
+    *   Your IDE should build, deploy the project to Tomcat, start Tomcat, and open a web browser.
+
+8.  **Access the App:**
+    *   The browser should open to `http://localhost:8080/SimpleContactBook/` (or similar, depending on your Tomcat port and project name). This should display `addContact.jsp` because of the `welcome-file` setting.
+    *   You can directly navigate to `http://localhost:8080/SimpleContactBook/addContact.jsp` to add contacts.
+    *   You can navigate to `http://localhost:8080/SimpleContactBook/contacts` to view the list (this triggers the `doGet` method of the servlet).
+
+Now you have a basic web application demonstrating core concepts!
