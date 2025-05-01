@@ -1,698 +1,321 @@
-Okay, here is the complete code for the **Simple Contact Book Web App** using Servlets, JSP, and **Hibernate** with MySQL.
-
-**Assumptions:**
-
-*   You are using a build tool like Maven or Gradle (Maven `pom.xml` provided) OR you will manually place JARs in `WEB-INF/lib`.
-*   You have MySQL installed and running.
-*   You have Apache Tomcat (or another servlet container) installed.
-*   You have a Java IDE (like Eclipse, IntelliJ).
-
----
-
-**1. Project Structure (Maven Standard):**
-
-```
-SimpleContactBookHibernate/
-├── pom.xml
-├── src/
-│   ├── main/
-│   │   ├── java/
-│   │   │   └── com/
-│   │   │       └── example/
-│   │   │           └── contactbook/
-│   │   │               ├── bean/
-│   │   │               │   └── Contact.java      (Entity)
-│   │   │               ├── dao/
-│   │   │               │   └── ContactDao.java     (Hibernate DAO)
-│   │   │               ├── servlet/
-│   │   │               │   └── ContactServlet.java (Controller)
-│   │   │               └── util/
-│   │   │                   └── HibernateUtil.java  (SessionFactory Helper)
-│   │   ├── resources/
-│   │   │   └── hibernate.cfg.xml     (Hibernate Config)
-│   │   └── webapp/
-│   │       ├── addContact.jsp        (View)
-│   │       ├── viewContacts.jsp      (View)
-│   │       └── WEB-INF/
-│   │           ├── web.xml           (Deployment Descriptor)
-│   │           └── lib/              (JARs go here if not using Maven/Gradle)
-```
-
----
-
-**2. `pom.xml` (Maven Dependencies)**
-
-```xml
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-
-    <groupId>com.example</groupId>
-    <artifactId>SimpleContactBookHibernate</artifactId>
-    <version>1.0-SNAPSHOT</version>
-    <packaging>war</packaging> <!-- Important: Set packaging to war -->
-
-    <name>SimpleContactBookHibernate Maven Webapp</name>
-    <url>http://maven.apache.org</url>
-
-    <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source> <!-- Or newer like 11, 17 -->
-        <maven.compiler.target>1.8</maven.compiler.target> <!-- Or newer like 11, 17 -->
-        <hibernate.version>5.6.15.Final</hibernate.version> <!-- Use a stable Hibernate 5 version for simplicity with javax -->
-        <!-- If using Hibernate 6+, use jakarta dependencies and adjust code imports -->
-        <!-- <hibernate.version>6.4.4.Final</hibernate.version> -->
-        <mysql.connector.version>8.0.33</mysql.connector.version>
-        <servlet.api.version>4.0.1</servlet.api.version> <!-- Corresponds to javax.servlet -->
-        <jsp.api.version>2.3.3</jsp.api.version>     <!-- Corresponds to javax.servlet.jsp -->
-    </properties>
-
-    <dependencies>
-        <!-- Hibernate Core (using Hibernate 5 with javax.persistence) -->
-        <dependency>
-            <groupId>org.hibernate</groupId>
-            <artifactId>hibernate-core</artifactId>
-            <version>${hibernate.version}</version>
-        </dependency>
-
-        <!-- MySQL Connector -->
-        <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-            <version>${mysql.connector.version}</version>
-        </dependency>
-
-        <!-- Servlet API (provided by server) -->
-        <dependency>
-            <groupId>javax.servlet</groupId> <!-- Use javax for Hibernate 5 / Servlet API 4 -->
-            <artifactId>javax.servlet-api</artifactId>
-            <version>${servlet.api.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- JSP API (provided by server) -->
-        <dependency>
-            <groupId>javax.servlet.jsp</groupId> <!-- Use javax for Hibernate 5 / JSP API 2.3 -->
-            <artifactId>javax.servlet.jsp-api</artifactId>
-            <version>${jsp.api.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- JSTL (Optional, if you use JSTL tags in JSP) -->
-        <!--
-        <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>jstl</artifactId>
-            <version>1.2</version>
-        </dependency>
-        -->
-
-    </dependencies>
-
-    <build>
-        <finalName>SimpleContactBookHibernate</finalName>
-        <pluginManagement>
-            <plugins>
-                <plugin>
-                    <artifactId>maven-clean-plugin</artifactId>
-                    <version>3.1.0</version>
-                </plugin>
-                <plugin>
-                    <artifactId>maven-resources-plugin</artifactId>
-                    <version>3.0.2</version>
-                </plugin>
-                <plugin>
-                    <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.8.0</version>
-                </plugin>
-                <plugin>
-                    <artifactId>maven-surefire-plugin</artifactId>
-                    <version>2.22.1</version>
-                </plugin>
-                <plugin>
-                    <artifactId>maven-war-plugin</artifactId>
-                    <version>3.2.2</version>
-                     <configuration>
-                        <failOnMissingWebXml>false</failOnMissingWebXml> <!-- Allow running without web.xml if using annotations -->
-                    </configuration>
-                </plugin>
-                <plugin>
-                    <artifactId>maven-install-plugin</artifactId>
-                    <version>2.5.2</version>
-                </plugin>
-                <plugin>
-                    <artifactId>maven-deploy-plugin</artifactId>
-                    <version>2.8.2</version>
-                </plugin>
-            </plugins>
-        </pluginManagement>
-    </build>
-</project>
-```
-
-*(**Note:** If you use Hibernate 6+, change dependencies to `org.hibernate.orm:hibernate-core`, `jakarta.servlet:jakarta.servlet-api`, `jakarta.servlet.jsp:jakarta.servlet.jsp-api` and update the imports in Java code from `javax.*` to `jakarta.*`)*
-
----
-
-**3. `src/main/java/com/example/contactbook/bean/Contact.java`**
-
-```java
-package com.example.contactbook.bean;
-
-// Using javax.persistence for Hibernate 5
-import javax.persistence.Entity;
-import javax.persistence.Table;
-import javax.persistence.Id;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Column;
-import java.io.Serializable;
-
-@Entity
-@Table(name = "contacts")
-public class Contact implements Serializable {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id")
-    private int id;
-
-    @Column(name = "name", nullable = false, length = 100)
-    private String name;
-
-    @Column(name = "email", nullable = false, unique = true, length = 100)
-    private String email;
-
-    @Column(name = "phone", nullable = false, length = 20)
-    private String phone;
-
-    // Default Constructor (Required by Hibernate)
-    public Contact() {}
-
-    // Getters and Setters
-    public int getId() { return id; }
-    public void setId(int id) { this.id = id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-    public String getPhone() { return phone; }
-    public void setPhone(String phone) { this.phone = phone; }
-
-    @Override
-    public String toString() {
-        return "Contact{" + "id=" + id + ", name='" + name + '\'' + ", email='" + email + '\'' + ", phone='" + phone + '\'' + '}';
-    }
-}
-```
-
----
-
-**4. `src/main/java/com/example/contactbook/util/HibernateUtil.java`**
-
-```java
-package com.example.contactbook.util;
-
-import org.hibernate.SessionFactory;
-import org.hibernate.cfg.Configuration;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-
-public class HibernateUtil {
-    // Add SLF4J Logger (Optional but recommended)
-    // You would need to add SLF4J API and a binding (like logback) to pom.xml
-    // private static final Logger logger = LoggerFactory.getLogger(HibernateUtil.class);
-
-    private static final SessionFactory sessionFactory = buildSessionFactory();
-
-    private static SessionFactory buildSessionFactory() {
-        try {
-            // Create the SessionFactory from hibernate.cfg.xml
-             System.out.println("Attempting to configure Hibernate..."); // Simple console log
-            Configuration configuration = new Configuration().configure(); // Looks for hibernate.cfg.xml in classpath
-             System.out.println("Hibernate Configuration loaded.");
-            SessionFactory factory = configuration.buildSessionFactory();
-            System.out.println("SessionFactory created successfully.");
-            return factory;
-        } catch (Throwable ex) {
-            // Make sure you log the exception, as it might be masked
-            System.err.println("Initial SessionFactory creation failed." + ex);
-            ex.printStackTrace(); // Print stack trace to console
-            throw new ExceptionInInitializerError(ex);
-        }
-    }
-
-    public static SessionFactory getSessionFactory() {
-        return sessionFactory;
-    }
-
-    public static void shutdown() {
-        if (sessionFactory != null && !sessionFactory.isClosed()) {
-            System.out.println("Shutting down SessionFactory...");
-            getSessionFactory().close();
-            System.out.println("SessionFactory closed.");
-        }
-    }
-}
-```
-
----
-
-**5. `src/main/java/com/example/contactbook/dao/ContactDao.java`**
-
-```java
-package com.example.contactbook.dao;
-
-import com.example.contactbook.bean.Contact;
-import com.example.contactbook.util.HibernateUtil;
-import org.hibernate.Session;
-import org.hibernate.Transaction;
-import org.hibernate.query.Query; // Use org.hibernate.query.Query for Hibernate 5+
-
-import java.util.Collections;
-import java.util.List;
-
-public class ContactDao {
-
-    public boolean addContact(Contact contact) {
-        Transaction transaction = null;
-        Session session = null;
-        try {
-            session = HibernateUtil.getSessionFactory().openSession();
-            // Start a transaction
-            transaction = session.beginTransaction();
-            // Save the contact object
-            session.save(contact);
-            // Commit transaction
-            transaction.commit();
-            System.out.println("Contact added successfully: " + contact.getName());
-            return true;
-        } catch (Exception e) {
-            if (transaction != null && transaction.isActive()) {
-                try {
-                    transaction.rollback();
-                     System.err.println("Transaction rolled back for contact: " + contact.getName());
-                } catch (Exception rbEx) {
-                    System.err.println("Error rolling back transaction: " + rbEx.getMessage());
-                }
-            }
-            System.err.println("Error adding contact: " + e.getMessage());
-            e.printStackTrace(); // Log error
-            return false;
-        } finally {
-            if (session != null && session.isOpen()) {
-                session.close(); // Always close the session
-            }
-        }
-    }
-
-    public List<Contact> getAllContacts() {
-         Session session = null;
-        try {
-             session = HibernateUtil.getSessionFactory().openSession();
-            // Use HQL (Hibernate Query Language)
-            // Make sure 'Contact' matches the class name, not table name
-            Query<Contact> query = session.createQuery("FROM Contact c ORDER BY c.name", Contact.class);
-            List<Contact> contacts = query.list();
-            System.out.println("Retrieved " + contacts.size() + " contacts.");
-            return contacts;
-        } catch (Exception e) {
-             System.err.println("Error retrieving contacts: " + e.getMessage());
-            e.printStackTrace(); // Log error
-            return Collections.emptyList(); // Return empty list on error
-        } finally {
-             if (session != null && session.isOpen()) {
-                session.close(); // Always close the session
-            }
-        }
-    }
-}
-```
-
----
-
-**6. `src/main/java/com/example/contactbook/servlet/ContactServlet.java`**
-
-```java
-package com.example.contactbook.servlet;
-
-import com.example.contactbook.bean.Contact;
-import com.example.contactbook.dao.ContactDao;
-import com.example.contactbook.util.HibernateUtil; // Import for shutdown
-
-// Using javax.servlet for Servlet API 4 / Hibernate 5
-import javax.servlet.*;
-import javax.servlet.http.*;
-import javax.servlet.annotation.WebServlet;
-import java.io.IOException;
-import java.util.List;
-
-@WebServlet("/contacts") // Maps URL pattern /contacts to this servlet
-public class ContactServlet extends HttpServlet {
-    private ContactDao contactDao;
-
-    @Override
-    public void init() throws ServletException {
-        System.out.println("ContactServlet initializing...");
-        contactDao = new ContactDao();
-         // Trigger SessionFactory creation on servlet init (optional, but good practice)
-        HibernateUtil.getSessionFactory();
-        System.out.println("ContactServlet initialized.");
-    }
-
-    @Override
-    protected void doPost(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
-        System.out.println("ContactServlet doPost called.");
-        String name = request.getParameter("name");
-        String email = request.getParameter("email");
-        String phone = request.getParameter("phone");
-
-        // Basic validation (add more robust validation as needed)
-        if (name == null || name.trim().isEmpty() ||
-            email == null || email.trim().isEmpty() ||
-            phone == null || phone.trim().isEmpty()) {
-            // Handle error - maybe forward back to form with an error message
-            System.err.println("Validation failed: Missing contact details.");
-             request.setAttribute("errorMessage", "All fields are required.");
-             RequestDispatcher dispatcher = request.getRequestDispatcher("addContact.jsp");
-             dispatcher.forward(request, response);
-            return;
-        }
-
-
-        Contact newContact = new Contact();
-        newContact.setName(name.trim());
-        newContact.setEmail(email.trim());
-        newContact.setPhone(phone.trim());
-
-        boolean success = contactDao.addContact(newContact);
-
-         if (!success) {
-             System.err.println("Failed to add contact via DAO.");
-             request.setAttribute("errorMessage", "Failed to save contact. Check logs.");
-             RequestDispatcher dispatcher = request.getRequestDispatcher("addContact.jsp");
-             dispatcher.forward(request, response);
-             return;
-         }
-
-        System.out.println("Redirecting to GET /contacts after POST.");
-        // Use context path for robust redirection
-        response.sendRedirect(request.getContextPath() + "/contacts");
-    }
-
-    @Override
-    protected void doGet(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
-         System.out.println("ContactServlet doGet called.");
-        List<Contact> contactList = contactDao.getAllContacts();
-        request.setAttribute("contactList", contactList); // Store list in request scope
-        RequestDispatcher dispatcher = request.getRequestDispatcher("/viewContacts.jsp"); // Use leading slash
-        dispatcher.forward(request, response); // Forward to the JSP
-         System.out.println("Forwarded to viewContacts.jsp");
-    }
-
-    @Override
-    public void destroy() {
-        System.out.println("ContactServlet destroying...");
-        // Shutdown Hibernate SessionFactory when web application stops
-        HibernateUtil.shutdown();
-        System.out.println("ContactServlet destroyed.");
-        super.destroy();
-    }
-}
-```
-
----
-
-**7. `src/main/resources/hibernate.cfg.xml`**
-
-```xml
-<!DOCTYPE hibernate-configuration PUBLIC
-        "-//Hibernate/Hibernate Configuration DTD 3.0//EN"
-        "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
-
-<hibernate-configuration>
-    <session-factory>
-
-        <!-- == Database connection settings == -->
-        <!-- Driver -->
-        <property name="connection.driver_class">com.mysql.cj.jdbc.Driver</property>
-
-        <!-- URL -->
-        <!-- !! IMPORTANT: Replace 'contact_db' if your DB name is different !! -->
-        <!-- !! IMPORTANT: Add serverTimezone if needed by your driver/MySQL version !! -->
-        <property name="connection.url">jdbc:mysql://localhost:3306/contact_db?useSSL=false&amp;serverTimezone=UTC</property>
-
-        <!-- Credentials -->
-        <!-- !! IMPORTANT: Replace with your actual MySQL username !! -->
-        <property name="connection.username">root</property>
-        <!-- !! IMPORTANT: Replace with your actual MySQL password !! -->
-        <property name="connection.password">your_password</property>
-
-
-        <!-- == Connection Pool (for testing only - use C3P0, HikariCP in production) == -->
-        <property name="connection.pool_size">1</property>
-
-
-        <!-- == SQL Dialect == -->
-        <!-- Use MySQL8Dialect for MySQL 8.x, MySQL5Dialect for MySQL 5.x -->
-        <property name="dialect">org.hibernate.dialect.MySQL8Dialect</property>
-
-
-        <!-- == Optional Settings == -->
-        <!-- Echo all executed SQL to stdout (useful for debugging) -->
-        <property name="show_sql">true</property>
-        <property name="format_sql">true</property>
-        <property name="use_sql_comments">true</property>
-
-
-        <!-- == Schema Management == -->
-        <!-- Automatically validates or updates the schema -->
-        <!-- Options: validate | update | create | create-drop | none -->
-        <!-- 'update' is convenient for development but use with caution. -->
-        <!-- 'validate' or 'none' are safer for production. -->
-        <property name="hbm2ddl.auto">update</property>
-
-
-        <!-- == Mention Annotated Entity Class == -->
-        <mapping class="com.example.contactbook.bean.Contact"/>
-
-    </session-factory>
-</hibernate-configuration>
-```
-**---> REMEMBER TO CHANGE `connection.url`, `connection.username`, and `connection.password` ABOVE! <---**
-
----
-
-**8. `src/main/webapp/addContact.jsp`**
-
-```jsp
-<%@ page contentType="text/html;charset=UTF-8" language="java" %>
-<html>
-<head>
-    <title>Add Contact</title>
-    <style>
-        body { font-family: sans-serif; }
-        .error { color: red; font-weight: bold; margin-bottom: 10px;}
-        label { display: inline-block; width: 80px; margin-bottom: 5px;}
-        input[type=text], input[type=email] { width: 200px; padding: 4px; margin-bottom: 10px;}
-        input[type=submit] { padding: 5px 15px; cursor: pointer;}
-        a { text-decoration: none; color: blue;}
-        a:hover { text-decoration: underline;}
-    </style>
-</head>
-<body>
-    <h2>Add New Contact</h2>
-
-    <%-- Display error message if present --%>
-    <%
-        String errorMessage = (String) request.getAttribute("errorMessage");
-        if (errorMessage != null && !errorMessage.isEmpty()) {
-    %>
-        <p class="error"><%= errorMessage %></p>
-    <%
-        }
-    %>
-
-    <form action="<%= request.getContextPath() %>/contacts" method="post"> <%-- POST to ContactServlet --%>
-        <div>
-             <label for="name">Name:</label>
-             <input type="text" id="name" name="name" required>
-        </div>
-        <div>
-             <label for="email">Email:</label>
-             <input type="email" id="email" name="email" required>
-        </div>
-         <div>
-             <label for="phone">Phone:</label>
-             <input type="text" id="phone" name="phone" required>
-        </div>
-        <div>
-            <input type="submit" value="Add Contact">
-        </div>
-    </form>
-    <br>
-    <a href="<%= request.getContextPath() %>/contacts">View All Contacts</a> <%-- Link to GET handler --%>
-</body>
-</html>
-```
-
----
-
-**9. `src/main/webapp/viewContacts.jsp`**
-
-```jsp
-<%@ page contentType="text/html;charset=UTF-8" language="java" %>
-<%@ page import="java.util.List" %>
-<%@ page import="com.example.contactbook.bean.Contact" %>
-<html>
-<head>
-    <title>Contact List</title>
-    <style>
-        body { font-family: sans-serif; }
-        table { border-collapse: collapse; width: 80%; margin-top: 15px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        a { text-decoration: none; color: blue;}
-        a:hover { text-decoration: underline;}
-    </style>
-</head>
-<body>
-    <h2>Contact List</h2>
-
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Phone</th>
-            </tr>
-        </thead>
-        <tbody>
-        <%
-            // Retrieve the list passed from the servlet
-            Object attribute = request.getAttribute("contactList");
-            List<Contact> contactList = null;
-            if (attribute instanceof List<?>) {
-                 // Basic check to prevent ClassCastException if attribute is wrong type
-                 contactList = (List<Contact>) attribute;
-            }
-
-
-            if (contactList != null && !contactList.isEmpty()) {
-                for (Contact contact : contactList) {
-        %>
-            <tr>
-                <td><%= contact.getId() %></td>
-                <td><%= contact.getName() %></td>
-                <td><%= contact.getEmail() %></td>
-                <td><%= contact.getPhone() %></td>
-            </tr>
-        <%
-                } // end for loop
-            } else {
-        %>
-            <tr>
-                <td colspan="4" style="text-align: center;">No contacts found.</td>
-            </tr>
-        <%
-            } // end if/else
-        %>
-        </tbody>
-    </table>
-    <br>
-    <a href="<%= request.getContextPath() %>/addContact.jsp">Add New Contact</a>
-</body>
-</html>
-```
-
----
-
-**10. `src/main/webapp/WEB-INF/web.xml`**
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
-         version="4.0">
-
-    <display-name>SimpleContactBookHibernate</display-name>
-
-    <!-- Optional: If not using @WebServlet in ContactServlet.java -->
-    <!--
-    <servlet>
-        <servlet-name>ContactServlet</servlet-name>
-        <servlet-class>com.example.contactbook.servlet.ContactServlet</servlet-class>
-    </servlet>
-    <servlet-mapping>
-        <servlet-name>ContactServlet</servlet-name>
-        <url-pattern>/contacts</url-pattern>
-    </servlet-mapping>
-    -->
-
-    <!-- Define the first page to load -->
-    <welcome-file-list>
-        <welcome-file>addContact.jsp</welcome-file>
-        <!-- You could also redirect to /contacts servlet here if you prefer -->
-        <!-- <welcome-file>contacts</welcome-file> -->
-    </welcome-file-list>
-
-</web-app>
-```
-
----
-
-**11. MySQL Database Setup SQL**
-
-Execute this in your MySQL client:
-
-```sql
--- Create the database (if it doesn't exist)
--- !! Use the SAME database name as in hibernate.cfg.xml !!
-CREATE DATABASE IF NOT EXISTS contact_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- Switch to the database
-USE contact_db;
-
--- Create the contacts table (Hibernate's hbm2ddl.auto=update might do this too, but good practice)
-CREATE TABLE IF NOT EXISTS contacts (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) NOT NULL UNIQUE,
-    phone VARCHAR(20) NOT NULL,
-    -- Hibernate automatically manages tables based on Entity and hbm2ddl.auto
-    -- No need for created_at unless you map it in the Entity
-);
-
--- Optional: Verify table creation
--- DESCRIBE contacts;
-```
-
----
-
-**How to Run:**
-
-1.  **Prerequisites:** JDK, IDE (Eclipse/IntelliJ), Apache Tomcat, MySQL Server.
-2.  **Database:** Run the SQL script above. **CRITICAL:** Update the database URL, username, and password in `src/main/resources/hibernate.cfg.xml`.
-3.  **Project Setup:**
-    *   Create a new Maven Project in your IDE. Choose `maven-archetype-webapp`.
-    *   Replace the generated `pom.xml` with the one provided above.
-    *   Create the necessary package structure under `src/main/java`.
-    *   Copy/Paste all the Java files (`Contact.java`, `HibernateUtil.java`, `ContactDao.java`, `ContactServlet.java`) into their respective packages.
-    *   Create the `src/main/resources` folder and place `hibernate.cfg.xml` inside it.
-    *   Place `addContact.jsp` and `viewContacts.jsp` directly under `src/main/webapp`.
-    *   Place `web.xml` under `src/main/webapp/WEB-INF`.
-4.  **Maven Update:** Right-click on your project in the IDE -> Maven -> Update Project (or Reimport). This downloads the dependencies defined in `pom.xml`. The JARs should now appear under Maven Dependencies (you don't need to manually put them in `WEB-INF/lib`).
-5.  **Server Configuration:** Add your Apache Tomcat server to your IDE's Servers view.
-6.  **Deploy & Run:**
-    *   Right-click your project.
-    *   Select "Run As" -> "Run on Server".
-    *   Choose your configured Tomcat server.
-    *   Click Finish.
-7.  **Access:** Your IDE should start Tomcat and open a browser to `http://localhost:8080/SimpleContactBookHibernate/` (adjust port and context root if needed). This will show `addContact.jsp`. Use the form and links to navigate. Check your IDE console and Tomcat logs for output and errors.
+Okay, let's break down this Sage script and figure out how to recover the flag.
+
+1. Understanding the Setup
+
+Flag Padding: The flag is padded with :: and 120 random bytes. This means the message FLAG is len(flag) + 2 + 120 bytes long. Since n is 2048 bits (256 bytes), the message FLAG will be smaller than n.
+
+RSA Encryption: Standard RSA encryption is used: ct = FLAG^e mod n. To decrypt, we need the private key d, which requires factoring n into p and q.
+
+The Number Field: A number field K = Q(z) is defined, where z is a root of the polynomial f(x) = 6x^6 + 8x^4 + 1.
+
+The Prime Ideal: P = K.prime_above(p) finds a prime ideal P in the ring of integers of K that lies "above" the rational prime p. This means P \cap Z = (p).
+
+The Gift: gift = P.random_element(...) provides an element g that belongs to the ideal P.
+
+2. The Key Insight: Using the Gift to Factor n
+
+The crucial piece of information is the gift. Since the gift element g belongs to the prime ideal P lying above p, a fundamental property of number fields tells us that the norm of the element g, denoted Norm(g), must be divisible by the norm of the ideal P.
+
+The norm of the ideal P is Norm(P) = p^f for some integer f >= 1 (the inertia degree). Therefore, Norm(g) must be divisible by p.
+
+Since n = p * q, and we know that p divides Norm(g), we can find p by computing the greatest common divisor (GCD) of Norm(g) and n:
+
+gcd(Norm(g), n) = p
+
+This works assuming q does not also divide Norm(g), which is highly probable given that p and q are large, distinct primes, and the norm calculation depends on the structure of the number field K and the element g, unrelated to q.
+
+3. Steps to Decrypt
+
+Parse Inputs: Get the values of n, gift, e, and ct from the challenge output.
+
+Set up Sage Environment: Start a SageMath session or run a Sage script.
+
+Define the Number Field: Define the same number field K as in the challenge script.
+
+R.<x> = PolynomialRing(QQ) # Define polynomial ring over rationals
+f = 6*x^6 + 8*x^4 + 1
+K.<z> = NumberField(f)   # Define the number field K with generator z
+
+
+Represent the Gift: The gift will likely be printed as a string representing an element in K, for example, c_0 + c_1*z + c_2*z^2 + .... Convert this string into an element of K. Sage can often evaluate these directly.
+
+# Assuming 'gift_str' contains the string output for 'gift'
+# Example: gift_str = "123 + 456*z - 789*z^2 + ..."
+# Make sure the variable 'z' used in the string matches the generator of K
+gift_element = K(eval(gift_str))
+# Or potentially simpler if the string is exactly how Sage prints it:
+# gift_element = sage_eval(gift_str, locals={'z': K.gen()})
+# Or even just:
+# gift_element = K(gift_str) # Try this first
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+You'll need to replace gift_str with the actual output from the challenge. Let's assume the gift string can be evaluated directly or parsed easily.
+
+Compute the Norm: Calculate the norm of the gift_element.
+
+norm_g = gift_element.norm()
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+The norm should be a rational number (likely an integer in this case). If it's a fraction a/b, you might need to work with the numerator a, as Norm(g) being divisible by p means p divides a. However, norms of elements generated this way are typically integers. Let's ensure it's an integer.
+
+norm_g = Integer(norm_g) # Convert to Sage Integer type
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+Factor n: Compute the GCD of the norm and n.
+
+n_val = Integer(n) # Make sure n is a Sage Integer
+p = gcd(norm_g, n_val)
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+Verify Factor: Check if p is a non-trivial factor (i.e., 1 < p < n).
+
+if p == 1 or p == n_val:
+    print("[-] GCD failed to find a non-trivial factor. Something is wrong.")
+    # Possible issues: norm was 0 or +/-1, or q also divides norm (unlikely)
+    exit()
+else:
+    print(f"[+] Found potential factor p = {p}")
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+Find q: Calculate the other factor q.
+
+q = n_val // p
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+Verify Factorization: Check p * q == n.
+
+if p * q == n_val:
+    print(f"[+] Found factors: p={p}, q={q}")
+else:
+    print("[-] Factorization failed.")
+    exit()
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+Calculate Private Key d: Compute phi = (p-1)*(q-1) and then d = inverse_mod(e, phi).
+
+e_val = Integer(e) # Use the integer value of e (0x10001)
+phi = (p - 1) * (q - 1)
+d = inverse_mod(e_val, phi)
+print(f"[+] Calculated private key d")
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+Decrypt: Decrypt the ciphertext ct.
+
+ct_val = Integer(ct) # Use the integer value of ct
+FLAG_long = power_mod(ct_val, d, n_val)
+print(f"[+] Decrypted message (integer): {FLAG_long}")
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+Convert to Bytes and Extract Flag: Convert the resulting integer back to bytes and extract the flag.
+
+from Crypto.Util.number import long_to_bytes
+
+FLAG_bytes = long_to_bytes(int(FLAG_long)) # Convert Sage Integer to Python int first
+
+separator = b"::"
+if separator in FLAG_bytes:
+    flag = FLAG_bytes.split(separator)[0]
+    try:
+        print(f"[+] Flag: {flag.decode('utf-8')}")
+    except UnicodeDecodeError:
+        print(f"[+] Flag (raw bytes): {flag}")
+else:
+    print("[-] Separator '::' not found in decrypted message.")
+    print(f"[+] Decrypted bytes: {FLAG_bytes}")
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+4. Example Sage Script (Putting it together)
+
+# sage
+
+from Crypto.Util.number import long_to_bytes
+import sys # For exit()
+
+# --- Paste the challenge output here ---
+n_str = "PASTE_N_HERE"
+gift_str = "PASTE_GIFT_STRING_HERE" # Ensure this string is evaluatable by Sage
+e_hex = "0x10001"
+ct_hex = "PASTE_CT_HEX_HERE"
+# ---------------------------------------
+
+# Convert inputs to Sage integers
+try:
+    n = Integer(n_str)
+    e = Integer(int(e_hex, 16))
+    ct = Integer(int(ct_hex, 16))
+    print("[+] Parsed inputs successfully.")
+except Exception as err:
+    print(f"[-] Error parsing inputs: {err}")
+    sys.exit(1)
+
+# Define the number field
+try:
+    R.<x> = PolynomialRing(QQ)
+    f = 6*x^6 + 8*x^4 + 1
+    K.<z> = NumberField(f, 'z') # Explicitly name the generator 'z'
+    print("[+] Defined number field K = Q(z) where z^6 + 8/6*z^4 + 1/6 = 0") # Note Sage normalizes the polynomial
+    # Check if the generator name matches the gift string
+    if 'z' not in gift_str:
+       print("[!] Warning: Generator 'z' might not match variable in gift string.")
+       print("    Gift string example: '1 + 2*z + 3*z^2...'")
+       print(f"    Actual gift string: {gift_str}")
+       # Adjust K definition or gift_str parsing if needed
+
+except Exception as err:
+    print(f"[-] Error defining number field: {err}")
+    sys.exit(1)
+
+# Convert gift string to K element
+try:
+    # Using sage_eval is safer than raw eval if possible
+    # Or direct conversion K(gift_str) if format matches
+    # Using eval here, assuming challenge output is trusted Sage format
+    # Ensure the global environment includes 'z' mapped to K.gen()
+    gift_element = eval(gift_str, {'z': K.gen(), 'Rational': QQ, 'Integer': ZZ})
+    # Alternatively:
+    # gift_element = K(gift_str) # Try this first if the format is simple
+    print(f"[+] Parsed gift element: {gift_element}")
+except Exception as err:
+    print(f"[-] Error parsing gift string: {err}")
+    print("    Check if the gift string uses 'z' and is a valid Sage expression.")
+    sys.exit(1)
+
+# Calculate the norm
+try:
+    norm_g = gift_element.norm()
+    norm_g = Integer(norm_g) # Ensure it's an integer
+    print(f"[+] Computed norm: {norm_g}")
+    if norm_g == 0:
+        print("[-] Norm is zero. Cannot proceed.")
+        sys.exit(1)
+except Exception as err:
+    print(f"[-] Error computing norm: {err}")
+    sys.exit(1)
+
+# Factor n using the norm
+try:
+    p = gcd(norm_g, n)
+    if p == 1 or p == n:
+        print(f"[-] GCD(norm, n) yielded {p}. Cannot factor n using this method.")
+        # Maybe try gcd(norm_g - 1, n) or other variations? Unlikely necessary.
+        # Check if norm calculation resulted in +/- 1?
+        if abs(norm_g) == 1:
+             print("   Norm is +/- 1.")
+        sys.exit(1)
+
+    q = n // p
+
+    if p * q != n:
+        print("[-] Factorization failed (p*q != n).")
+        sys.exit(1)
+
+    print(f"[+] Found factors:\np = {p}\nq = {q}")
+
+except Exception as err:
+    print(f"[-] Error during factorization: {err}")
+    sys.exit(1)
+
+# RSA Decryption
+try:
+    phi = (p - 1) * (q - 1)
+    d = inverse_mod(e, phi)
+    print(f"[+] Calculated private key d")
+
+    FLAG_long = power_mod(ct, d, n)
+    print(f"[+] Decrypted message (integer): {FLAG_long}")
+
+    # Convert to bytes and extract flag
+    FLAG_bytes = long_to_bytes(int(FLAG_long)) # Convert Sage Integer -> Python int -> bytes
+
+    separator = b"::"
+    if separator in FLAG_bytes:
+        flag = FLAG_bytes.split(separator)[0]
+        try:
+            print(f"\n[*] Flag: {flag.decode('utf-8')}")
+        except UnicodeDecodeError:
+            print(f"\n[*] Flag (raw bytes): {flag}")
+    else:
+        # Sometimes padding might result in null bytes at the start, remove them
+        FLAG_bytes_stripped = FLAG_bytes.lstrip(b'\x00')
+        if separator in FLAG_bytes_stripped:
+             flag = FLAG_bytes_stripped.split(separator)[0]
+             try:
+                 print(f"\n[*] Flag (after stripping leading nulls): {flag.decode('utf-8')}")
+             except UnicodeDecodeError:
+                 print(f"\n[*] Flag (raw bytes, after stripping leading nulls): {flag}")
+        else:
+            print("\n[-] Separator '::' not found in decrypted message.")
+            print(f"[+] Decrypted bytes (raw): {FLAG_bytes}")
+            print(f"[+] Decrypted bytes (stripped): {FLAG_bytes_stripped}")
+
+except Exception as err:
+    print(f"[-] Error during decryption or flag extraction: {err}")
+    sys.exit(1)
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Sage
+IGNORE_WHEN_COPYING_END
+
+To use this:
+
+Save the code above as a .sage file (e.g., solve.sage).
+
+Run the challenge script once to get the output values for n, gift, e, and ct.
+
+Paste these exact values into the PASTE_..._HERE placeholders in the solve.sage script. Pay close attention to the format of the gift string – it must be a valid Sage expression representing an element of K.
+
+Run the solver script using Sage: sage solve.sage.
+
+This should compute the factors p and q, calculate the private key d, decrypt the ciphertext, and print the flag.
