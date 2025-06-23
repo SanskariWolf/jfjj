@@ -1,4 +1,4 @@
-Okay, let's break down this Sage script and figure out how to recover the flag.
+weweweweOkay, let's break down this Sage script and figure out how to recover the flag.
 
 1. Understanding the Setup
 
